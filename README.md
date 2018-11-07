@@ -2,6 +2,12 @@
 
 Or something like a Snapchat filter....
 
+**Click on the image to watch a demo!**
+
+[![WATCH A DEMO](/imgs/facemask.png)](https://youtu.be/CIH0YokMLRY)
+
+or [download directly](./demo.mkv)
+
 ## Description
 
 The traditional OpenCV examples just provide face detections on a frame by frame basis, and are not correlated through time. Additionally they can have a high false-positive rate under different lighting conditions / video quailty, causing a lot of noise. The following program builds upon OpenCV's face classification tools to build a real-time face masking program that independently tracks multiple faces frame-to-frame using a primitive tracking algorithm.
