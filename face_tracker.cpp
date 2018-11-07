@@ -3,6 +3,56 @@
 #include <iostream>
 #include "face_tracker.h"
 
+// Just needs to seed the default mask list
+FaceTracker::FaceTracker() {
+    masks = MaskVector();
+    masks.emplace_back("imgs/hair2.png", 1.5);
+    masks.emplace_back("imgs/guy3.png", 1.3);
+    masks.emplace_back("imgs/glasses.png", 1.3);
+    masks.emplace_back("imgs/ball.png", 1.5);
+}
+
+
+// Take face detections from a frame and insert to the face tracker
+void FaceTracker::processNewDetections(const std::vector<cv::Rect> detections, const int& nFrame) {
+
+    std::cout << "Processing " << detections.size() << " detections" << std::endl << std::endl;
+
+    for (auto & detection : detections) {
+
+        // Check first for matching stuff we think is real
+        if (matchesAnyFace(detection, definiteFaces, nFrame, true)) {
+            continue;
+
+        }
+        
+        // Check first for matching stuff we think is potential
+        if (matchesAnyFace(detection, potentialFaces, nFrame, false)) {
+           continue;
+        }
+
+
+        // If we are here, there is no matching face already existing, so 
+        // it can be added to list of potentials
+        potentialFaces.emplace_back(detection, masks.getNextMask(), nFrame);
+        std::cout << "Adding new potential face." << std::endl;
+    }
+
+    // Now upgrade those with enough matches
+    upgradePotentialFaces();
+
+    // And purge the old ones
+    purgeOldFaces(nFrame);
+
+    std::cout << definiteFaces.size() << " real faces." << std::endl;
+    std::cout << potentialFaces.size() << " potential faces." << std::endl;
+
+}
+
+// To draw what we have
+const std::vector<Face>& FaceTracker::getFaces() const {
+    return definiteFaces;
+}
 
 // Need to run stats on size and position similarity to check for a match
 bool FaceTracker::matchesFace(const cv::Rect & potential, Face & face, const int& nFrame) {
@@ -54,8 +104,8 @@ bool FaceTracker::matchesFace(const cv::Rect & potential, Face & face, const int
 // Check detections against a std::vector of faces for matches, and return
 // true if a match is found. 
 //
-// FIXME - future improvement to do a nearest neighbor check than return
-// first match
+// TODO - for future improvement do a nearest neighbor check rather than return
+// on first close match
 bool FaceTracker::matchesAnyFace(const cv::Rect& detection, std::vector<Face>& faceVector, const int& nFrame, bool real) {
     bool foundMatch = false;
     for (auto & face : faceVector) {
@@ -69,7 +119,7 @@ bool FaceTracker::matchesAnyFace(const cv::Rect& detection, std::vector<Face>& f
     return foundMatch;
 }
 
-// Purge things that have not been seen in a while
+// Purge faces that have not been seen in a while
 void FaceTracker::purgeOldFaces(const int& nFrame) {
     definiteFaces.erase(std::remove_if(definiteFaces.begin(), 
                                        definiteFaces.end(), 
@@ -81,6 +131,8 @@ void FaceTracker::purgeOldFaces(const int& nFrame) {
                         potentialFaces.end());
 }
 
+
+// Upgrade faces that have met the detection threshold
 void FaceTracker::upgradePotentialFaces() {
     // Copy faces over to definiteFaces if enough detections have been met
     std::copy_if(potentialFaces.begin(),
@@ -95,53 +147,3 @@ void FaceTracker::upgradePotentialFaces() {
                          potentialFaces.end());
 }
 
-FaceTracker::FaceTracker() {
-    // Seed possible masks
-    masks = MaskVector();
-    masks.emplace_back("imgs/hair2.png", 1.5);
-    masks.emplace_back("imgs/guy3.png", 1.3);
-    masks.emplace_back("imgs/glasses.png", 1.3);
-    masks.emplace_back("imgs/ball.png", 1.5);
-}
-
-
-// Take face detections from a frame and insert to the face tracker
-void FaceTracker::addNewDetections(const std::vector<cv::Rect> detections, const int& nFrame) {
-
-    std::cout << "Processing " << detections.size() << " detections" << std::endl << std::endl;
-
-    for (auto & detection : detections) {
-
-        // Check first for matching stuff we think is real
-        if (matchesAnyFace(detection, definiteFaces, nFrame, true)) {
-            continue;
-
-        }
-        
-        // Check first for matching stuff we think is potential
-        if (matchesAnyFace(detection, potentialFaces, nFrame, false)) {
-           continue;
-        }
-
-
-        // If we are here, there is no matching face already existing, so 
-        // it can be added to list of potentials
-        potentialFaces.emplace_back(detection, masks.getNextMask(), nFrame);
-        std::cout << "Adding new potential face." << std::endl;
-    }
-
-    // Now upgrade those with enough matches
-    upgradePotentialFaces();
-
-    // And purge the old ones
-    purgeOldFaces(nFrame);
-
-    std::cout << definiteFaces.size() << " real faces." << std::endl;
-    std::cout << potentialFaces.size() << " potential faces." << std::endl;
-
-}
-
-// To draw what we have
-const std::vector<Face>& FaceTracker::getFaces() const {
-    return definiteFaces;
-}

@@ -11,27 +11,34 @@
 // actually a real face.
 //
 // Faces are first in the "potentialFaces" list, in which they are not masked, but
-// become masked as soon as they are promited to "definiteFaces"
+// become masked as soon as they are promoted to "definiteFaces"
 //
 // This is similiar to how radar/video trackers decide if an object is real and to 
 // start tracking it.
 class FaceTracker {
 
-    // Remove a face if it hasn't been seen for 10 frames
-    static constexpr int EXPIRE_FACE_FRAMES = 20;
+    // Remove a face if it hasn't been seen for 15 frames
+    static constexpr int EXPIRE_FACE_FRAMES = 15;
 
     // Require being seen 10 times before considered real
     static constexpr int DETECTIONS_REQUIRED_TO_BE_REAL = 8;
 
-    // Limit total number of faces
-    static constexpr int MAX_FACES = 1;
-    
     // Keep track of potential and real faces
     std::vector<Face> definiteFaces;
     std::vector<Face> potentialFaces;
     
     // Initialize possible mask set for each face
     MaskVector masks;
+    
+    public:
+
+        FaceTracker();
+
+        // Take face detections from a frame and insert to the face tracker
+        void processNewDetections(const std::vector<cv::Rect> detections, const int& nFrame);
+
+        // To draw what we have
+        const std::vector<Face>& getFaces() const;
     
     private:
 
@@ -48,16 +55,7 @@ class FaceTracker {
         // Purge things that have not been seen in a while
         void purgeOldFaces(const int& nFrame);
 
+        // Move faces from potential -> definite
         void upgradePotentialFaces();
         
-    public:
-
-        FaceTracker();
-
-
-        // Take face detections from a frame and insert to the face tracker
-        void addNewDetections(const std::vector<cv::Rect> detections, const int& nFrame);
-
-        // To draw what we have
-        const std::vector<Face>& getFaces() const;
 };

@@ -1,11 +1,11 @@
 #include "opencv2/imgproc.hpp"
 
 // Class to store "Face Masks"
-// Imagnes with an alpha channel that will be overlayed to mask
+// 
+// These are images with an alpha channel that will be overlayed to mask
 // detected faces in the video feed.
 class Mask
 {
-
     private:
         // Load from local file in ./imgs
         std::string filename;
@@ -32,10 +32,9 @@ class Mask
         }
 };
 
-// Subclass std::vector and add 
+// Subclass std::vector and just add convenience method
 class MaskVector : public std::vector<Mask>
 {
-
     private:
         int nextImg = 0;
 

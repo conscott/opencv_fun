@@ -2,7 +2,7 @@ CXX=clang++
 CXXFLAGS=-g -std=c++14 -Wall -pthread $(shell pkg-config --cflags opencv)
 LDFLAGS += $(shell pkg-config --libs --static opencv)
 
-TARGET = facedector
+TARGET = facedetect
 
 .PHONY: default all clean
 

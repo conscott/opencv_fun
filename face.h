@@ -29,17 +29,18 @@ class Face
         int id;
 
 
+        // Need to be seeded with initial position, frame, and mask
         Face(const cv::Rect& detection, Mask& _mask, const int& nFrame);
 
-        // Time pasted since last detection in milliseconds
+        // Time past since last detection in milliseconds
         double timeUndetectedMs() const;
         
         // Number of frames since last detection
         int undetectedFrames(const int& currentFrame) const;
         
-        // Update members with latest information
+        // Update members with latest information upon detection match
         void updateSeen(const cv::Rect & detection, const int& nFrame);
 
+        // Get reference to old mask
         const Mask& getMask() const;
-
 };
