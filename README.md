@@ -32,3 +32,5 @@ make
 * [face.h](./face.h), [face.cpp](./face.cpp): The container for tracking face metadata
 * [face_tracker.h](./face_tracker.h), [face_tracker.cpp](./face_tracker.cpp): Keeps track of faces and contains tracking algorithm logic
 * [mask.h](./mask.h): Stores potential mask overlays for faces
+* [./imgs](./imgs): The images for face masks
+* [./data](./models): Haar Cascade models
