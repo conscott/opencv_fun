@@ -10,6 +10,7 @@ using namespace cv;
 // TODO - use initializer list for constructors
 // TODO - return by reference
 // TODO - don't forget auto
+// TODO - add const correctness
 
 // Class to store some images we are going to import
 class Mask
@@ -31,11 +32,11 @@ class Mask
             img = imread(filename, IMREAD_UNCHANGED);
         }
 
-        Mat getImg() {
+        const Mat& getImg() const {
             return img;
         }
 
-        double getScale() {
+        double getScale() const {
             return scale;
         }
 };
@@ -57,27 +58,52 @@ class MaskVector : public vector<Mask> {
         }
 };
 
-
 // A face we are tracking in the image
 class Face {
+
+    // Will be used to give new faces id's
+    static int numFaces;
 
     public: 
         Mask mask;
         Rect lastPosition;
         double lastTimeSeen;
         int numDetections;
+        int lastFrameSeen;
+        int id;
 
-    Face(Rect & detection, Mask& _mask) : mask(_mask) {
-        lastPosition = detection;
-        lastTimeSeen = (double)getTickCount();
-        numDetections = 1;
-    }
+        Face(Rect & detection, Mask& _mask, const int& nFrame) : mask(_mask) {
+            lastPosition = detection;
+            lastTimeSeen = (double)getTickCount();
+            lastFrameSeen = nFrame;
+            numDetections = 1;
+            numFaces += 1;
+            id = numFaces;
+        }
 
-    double timeUndetectedMs() {
-        return ((double)getTickCount() - this->lastTimeSeen)*1000 / getTickFrequency();
-    }
+        double timeUndetectedMs() const {
+            return ((double)getTickCount() - this->lastTimeSeen)*1000 / getTickFrequency();
+        }
+
+        int undetectedFrames(const int& currentFrame) const {
+            return currentFrame - lastFrameSeen;
+        }
+        
+        void updateSeen(const Rect & detection, const int& nFrame) {
+            lastPosition = detection;
+            lastTimeSeen = (double)getTickCount();
+            numDetections += 1;
+            lastFrameSeen = nFrame;
+            cout << "Updating face " << id << ": " << numDetections << " detections" << endl;
+        }
+
+        const Mask& getMask() const {
+            return mask;
+        }
 
 };
+
+int Face::numFaces = 0;
 
 
 // Face tracker will keep track of the faces that have been seen and attempt to
@@ -86,11 +112,11 @@ class Face {
 // actually a real face
 class FaceTracker {
 
-    // Remove a face if it hasn't been seen for 1000 ms
-    static const int EXPIRE_FACE_MS = 1000;
+    // Remove a face if it hasn't been seen for 10 frames
+    static const int EXPIRE_FACE_FRAMES = 20;
 
     // Require being seen 10 times before considered real
-    static const int DETECTIONS_REQUIRED_TO_BE_REAL = 10;
+    static const int DETECTIONS_REQUIRED_TO_BE_REAL = 8;
 
     // Limit total number of faces
     static const int MAX_FACES = 1;
@@ -104,26 +130,80 @@ class FaceTracker {
     
     private:
 
-        bool matchesFace(Rect & potential, Face & real) {
-            return true;
+        // Need to run stats on size and position similarity to check for a match
+        bool matchesFace(const Rect & potential, Face & face, const int& nFrame) {
+            const Rect& lastSeen = face.lastPosition;
+            const int frameDiff = face.undetectedFrames(nFrame);
+
+            // Percent moved in X direction relative to size of object
+            double percxdiff = (double)abs(potential.x - lastSeen.x)/lastSeen.width;
+
+            // Percent moved in Y direction relative to size of object
+            double percydiff = (double)abs(potential.y - lastSeen.y)/lastSeen.height;
+
+            // Ratio of width change
+            double ratiow = (double)potential.width / lastSeen.width;
+
+            // Ration of height change
+            double ratioh = (double)potential.height / lastSeen.height;
+
+            cout << endl;
+            cout << "Face #" << face.id << " last seen " << frameDiff << " frames ago" << endl;
+            cout << "Percent X: " << percxdiff << " Percent Y: " << percydiff << endl;
+            cout << "Ratio width: " << ratiow << " Ratio height: " << ratioh << endl;
+
+            bool match = true;
+
+            // Be more strict if last seen more recently
+            if (frameDiff <= 5) {
+                if (ratiow < 0.9 || ratiow > 1.11 || ratioh < 0.9 || ratioh > 1.11) {
+                    cout << "No match, width off" << endl;
+                    match = false;
+                } else if (percxdiff > 0.75 || percydiff > 0.75) {
+                    // can't quickly move too far
+                    cout << "No match, moved too far" << endl;
+                    match = false;
+                }
+            } else {
+                if (ratiow < 0.7 || ratiow > 1.43 || ratioh < 0.7 || ratioh > 1.43) {
+                    cout << "No match, width off" << endl;
+                    match = false;
+                } else if (percxdiff > 1.5 || percydiff > 1.5) {
+                    // can't quickly move too far
+                    cout << "No match, moved too far" << endl;
+                    match = false;
+                }
+            }
+            return match;
         }
 
-        void updateSeen(Face & face, Rect & detection) {
-            face.lastPosition = detection;
-            face.lastTimeSeen = (double)getTickCount();
-            face.numDetections += 1;
+        // Check detections against a vector of faces for matches, and return
+        // true if a match is found. 
+        //
+        // FIXME - future improvement to do a nearest neighbor check than return
+        // first match
+        bool matchesAnyFace(const Rect& detection, vector<Face>& faceVector, const int& nFrame, bool real = false) {
+            bool foundMatch = false;
+            for (auto & face : faceVector) {
+                if (matchesFace(detection, face, nFrame)) {
+                    cout << "Found a match for a " << (real ? "real" : "potential") << " face!" << endl;
+                    face.updateSeen(detection, nFrame);
+                    foundMatch = true;
+                    continue;
+                }
+            }
+            return foundMatch;
         }
-       
 
         // Purge things that have not been seen in a while
-        void purgeOldFaces() {
+        void purgeOldFaces(const int& nFrame) {
             definiteFaces.erase(std::remove_if(definiteFaces.begin(), 
                                                definiteFaces.end(), 
-                                               [](Face & i) { return i.timeUndetectedMs() > EXPIRE_FACE_MS; }), 
+                                               [&](Face & i) { return i.undetectedFrames(nFrame) > EXPIRE_FACE_FRAMES; }), 
                                 definiteFaces.end());
             potentialFaces.erase(std::remove_if(potentialFaces.begin(), 
                                                potentialFaces.end(), 
-                                               [](Face & i) { return i.timeUndetectedMs() > EXPIRE_FACE_MS; }), 
+                                               [&](Face & i) { return i.undetectedFrames(nFrame) > EXPIRE_FACE_FRAMES; }), 
                                 potentialFaces.end());
         }
 
@@ -132,7 +212,7 @@ class FaceTracker {
             std::copy_if(potentialFaces.begin(),
                          potentialFaces.end(),
                          std::back_inserter(definiteFaces), 
-                         [](auto & i){return i.numDetections > DETECTIONS_REQUIRED_TO_BE_REAL;} );
+                         [](Face & i){return i.numDetections > DETECTIONS_REQUIRED_TO_BE_REAL;} );
             
             // And remove from potential
             potentialFaces.erase(std::remove_if(potentialFaces.begin(), 
@@ -144,7 +224,7 @@ class FaceTracker {
     public:
 
         FaceTracker() {
-            MaskVector masks = MaskVector();
+            masks = MaskVector();
             masks.emplace_back("imgs/hair2.png", 1.5);
             masks.emplace_back("imgs/guy3.png", 1.3);
             masks.emplace_back("imgs/glasses.png", 1.3);
@@ -152,46 +232,50 @@ class FaceTracker {
 
 
         // Take face detections from a frame and insert to the face tracker
-        void addNewDetections(vector<Rect> detections) {
+        void addNewDetections(vector<Rect> detections, const int& nFrame) {
+
+            cout << "Processing " << detections.size() << " detections" << endl << endl;
 
             for (auto & detection : detections) {
 
                 // Check first for matching stuff we think is real
-                for (auto & faceReal : definiteFaces) {
-                    if (matchesFace(detection, faceReal)) {
-                        cout << "Found a match for real face!";
-                        updateSeen(faceReal, detection);
-                        continue;
-                    }
+                if (matchesAnyFace(detection, definiteFaces, nFrame, true)) {
+                    continue;
+
+                }
+                
+                // Check first for matching stuff we think is potential
+                if (matchesAnyFace(detection, potentialFaces, nFrame, false)) {
+                   continue;
                 }
 
-
-                // Then check things we think might be real
-                for (auto & facePot : potentialFaces) {
-                    if (matchesFace(detection, facePot)) {
-                        cout << "Found a match for potential face!";
-                        updateSeen(facePot, detection);
-                        continue;
-                    }
-                }
 
                 // If we are here, there is no matching face already existing, so 
                 // it can be added to list of potentials
-                potentialFaces.emplace_back(detection, masks.getNextMask());
+                potentialFaces.emplace_back(detection, masks.getNextMask(), nFrame);
+                cout << "Adding new potential face." << endl;
             }
 
             // Now upgrade those with enough matches
             upgradePotentialFaces();
 
             // And purge the old ones
-            purgeOldFaces();
+            purgeOldFaces(nFrame);
+
+            cout << definiteFaces.size() << " real faces." << endl;
+            cout << potentialFaces.size() << " potential faces." << endl;
+
         }
 
+        // To draw what we have
+        vector<Face>& getFaces() {
+            return definiteFaces;
+        }
 };
 
 
 
-void detectAndDraw( Mat& img, CascadeClassifier& cascade, MaskVector & masks, FaceTracker& faceTracker);
+void detectAndDraw( Mat& img, CascadeClassifier& cascade, MaskVector & masks, FaceTracker& faceTracker, const int& nFrame);
 string cascadeName;
 
 
@@ -234,9 +318,11 @@ int main( int argc, const char** argv )
         return 0;
     }
 
+    int nFrame = 0;
     if( capture.isOpened() )
     {
         cout << "Video capturing has been started ..." << endl;
+
 
         for(;;)
         {
@@ -245,12 +331,14 @@ int main( int argc, const char** argv )
                 break;
 
             Mat frame1 = frame.clone();
-            detectAndDraw( frame1, cascade, masks, faceTracker);
+            detectAndDraw( frame1, cascade, masks, faceTracker, nFrame);
 
             // ADD TOGGLE IDENTITY
             char c = (char)waitKey(10);
             if( c == 27 || c == 'q' || c == 'Q' )
                 break;
+
+            nFrame += 1;
         }
     }
     else
@@ -258,7 +346,7 @@ int main( int argc, const char** argv )
         cout << "Detecting face(s) in camera" << endl;
         if( !image.empty() )
         {
-            detectAndDraw( image, cascade, masks, faceTracker);
+            detectAndDraw( image, cascade, masks, faceTracker, nFrame);
             waitKey(0);
         }
     }
@@ -318,7 +406,7 @@ Rect resizeRoi(const Rect & roi, const double & scale, const int & max_row, cons
     return Rect(nx, ny, nwidth, nheight);
 }
 
-vector<Rect> detectFaces( Mat& img, CascadeClassifier& cascade) {
+vector<Rect> detectFacesInFrame( Mat& img, CascadeClassifier& cascade) {
     vector<Rect> faces;
     Mat gray, smallImg;
     cvtColor( img, gray, COLOR_BGR2GRAY );
@@ -332,36 +420,58 @@ vector<Rect> detectFaces( Mat& img, CascadeClassifier& cascade) {
     return faces;
 }
 
-void detectAndDraw( Mat& img, CascadeClassifier& cascade, MaskVector& masks, FaceTracker& faceTracker)
+void detectAndDraw( Mat& img, CascadeClassifier& cascade, MaskVector& masks, FaceTracker& faceTracker, const int& nFrame)
 {
     // Make incoming image RBGA
     Mat imga;
     cvtColor(img, imga, COLOR_RGB2RGBA);
 
-    vector<Rect> faces = detectFaces(img, cascade);
+    vector<Rect> facesInFrame = detectFacesInFrame(img, cascade);
 
-    // Try out the face tracker
-    //faceTracker.addNewDetections(faces);
+    bool debug = true;
+ 
+    // draw detections on each image
+    if (debug) {
+        for (auto& r: facesInFrame) {
+            rectangle( imga, Point(cvRound(r.x), cvRound(r.y)),
+                       Point(cvRound((r.x + r.width-1)), cvRound((r.y + r.height-1))),
+                       Scalar(255,255,0), 3, 8, 0);
+        }
+    }
 
-    //printf( "detection time = %g ms\n", t*1000/getTickFrequency());
+
+/*
     for ( size_t i = 0; i < faces.size(); i++ )
     {
         Rect & face = faces[i];
 
         auto mask = masks.getNextMask();
-        
+*/
+    faceTracker.addNewDetections(facesInFrame, nFrame);
+
+    auto& facesReal = faceTracker.getFaces();
+
+    for(auto& face : facesReal) {
+
+        const Mask& mask = face.getMask();
+
+        const Rect& currentRoi = face.lastPosition;
+
         // Will get the ROI to modify in the original image, truncating
         // it to our sub-image if it extends past the boundary
-        Rect faceRoi = resizeRoi(face, mask.getScale(), imga.rows, imga.cols);
+        Rect maskRoi = resizeRoi(currentRoi, mask.getScale(), imga.rows, imga.cols);
 
         // Want to make the mask slightly larger because the face recognition
         // algorithms makes smaller rectangles than the whole face
         Mat maskResize;
-        resize(mask.getImg(), maskResize, Size(faceRoi.width, faceRoi.height), 0, 0, INTER_AREA);
+        resize(mask.getImg(), maskResize, Size(maskRoi.width, maskRoi.height), 0, 0, INTER_AREA);
 
         // Now copy image into subImage 
-        copySubImage(imga, maskResize, faceRoi);
+        copySubImage(imga, maskResize, maskRoi);
 
     }
     imshow( "result", imga );
+    
+    // to debug frame by frame
+    //waitKey(0);
 }
