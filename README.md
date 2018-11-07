@@ -40,3 +40,10 @@ make
 * [mask.h](./mask.h): Stores potential mask overlays for faces
 * [./imgs](./imgs): The images for face masks
 * [./data](./models): Haar Cascade models
+
+### Future Updates
+- Incoroporate real logging
+- Add more face cascade models
+- Multithread image processing with work queues
+- Make matching algorithm do nearest-neighbor search instead of return first match
+- Add event toggles for classifiers / debug mode
